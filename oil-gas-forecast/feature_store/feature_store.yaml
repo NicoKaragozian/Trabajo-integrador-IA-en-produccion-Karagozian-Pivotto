@@ -1,0 +1,8 @@
+project: oil-gas-forecast
+registry: feature_store/registry.db
+provider: local
+online_store:
+  type: sqlite
+  path: feature_store/online_store.db
+offline_store:
+  type: file
