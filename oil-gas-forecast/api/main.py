@@ -34,7 +34,7 @@ class WellInfo(BaseModel):
 
 # --- Configuración ---
 FEAST_REPO = os.getenv("FEAST_REPO_PATH", "/app/feature_store")
-MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:6000")
 MODEL_NAME = os.getenv("MODEL_NAME", "hydrocarbon-forecast-model")
 
 FEAST_FEATURES = [

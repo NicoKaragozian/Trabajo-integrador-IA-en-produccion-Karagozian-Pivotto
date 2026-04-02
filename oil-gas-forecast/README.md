@@ -9,7 +9,7 @@ Pipeline de ML para pronosticar la producción futura de pozos de hidrocarburos 
 ```
 docker-compose
 ├── postgres          ← backend de MLflow
-├── mlflow            ← tracking server + model registry  (puerto 5000)
+├── mlflow            ← tracking server + model registry  (puerto 6000)
 └── api (FastAPI)     ← /forecast + /wells                (puerto 8000)
       ├── lee features del Feature Store online (Feast + SQLite)
       └── carga el modelo en Production desde MLflow Registry
@@ -38,7 +38,7 @@ docker-compose up -d
 ```
 
 Servicios disponibles:
-- **MLflow UI:** http://localhost:5000
+- **MLflow UI:** http://localhost:6000
 - **API + Swagger:** http://localhost:8000/docs
 
 ### 3. Generar el Feature Store
@@ -222,7 +222,7 @@ curl "http://localhost:8000/api/v1/wells?date_query=2024-06-01"
 curl "http://localhost:8000/api/v1/forecast?id_well=18122-001&date_start=2024-07-01&date_end=2024-12-01"
 
 # UIs
-open http://localhost:5000       # MLflow
+open http://localhost:6000       # MLflow
 open http://localhost:8000/docs  # Swagger
 ```
 
