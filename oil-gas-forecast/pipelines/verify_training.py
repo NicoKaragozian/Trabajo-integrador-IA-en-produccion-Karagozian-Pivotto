@@ -99,6 +99,6 @@ if __name__ == "__main__":
 
     if not args.skip_train:
         verify_mlflow_run(args.fecha, args.config)
-        verify_model_registry(model_name)
 
+    verify_model_registry(model_name)
     print("\n✅ Todas las verificaciones pasaron correctamente.\n")
