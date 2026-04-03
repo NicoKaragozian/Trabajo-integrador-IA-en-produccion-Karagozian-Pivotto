@@ -109,7 +109,7 @@ Las features que almacenamos en Feast son transformaciones que **no dependen del
 
 - **Negativos en producción:** El dataset tiene valores como -0.001 m³ y -12.26 Mm³ (errores de medición). Se clampean a 0.
 - **`tipoextraccion` nulos (601 casos, 0.15%):** Se asigna categoría 0 = "Sin sistema", que es semánticamente correcto para pozos en espera o inactivos.
-- **`profundidad` outliers:** El máximo es 378.939 m (imposible). Se reemplaza con la media del pozo; si el pozo no tiene ningún dato válido, se usa 0.
+- **`profundidad` nula:** Actualmente el pipeline imputa valores faltantes de `profundidad`; no aplica una lógica específica de detección/reemplazo de outliers, por lo que valores extremos del dataset pueden permanecer.
 - **`min_periods=1` en rolling:** Los pozos nuevos con pocos registros no quedan excluidos — usan el promedio de los registros disponibles.
 
 ### Target del modelo
