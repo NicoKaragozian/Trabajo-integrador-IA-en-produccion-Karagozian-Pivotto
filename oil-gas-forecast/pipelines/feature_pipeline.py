@@ -6,29 +6,33 @@ Puede correrse localmente sin Docker:
     cd oil-gas-forecast
     python pipelines/feature_pipeline.py
 """
+import importlib.util
 import logging
-import sys
 from pathlib import Path
 
 import pandas as pd
 from feast import FeatureStore
 
-# Permite importar feature_store/features.py desde cualquier CWD
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from feature_store.features import pozo, well_stats
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
+BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_URL = (
-    "https://datos.energia.gob.ar/dataset/c846e79c-026c-4040-897f-1ad3543b407c"
+    "http://datos.energia.gob.ar/dataset/c846e79c-026c-4040-897f-1ad3543b407c"
     "/resource/b5b58cdc-9e07-41f9-b392-fb9ec68b0725"
     "/download/produccin-de-pozos-de-gas-y-petrleo-no-convencional.csv"
 )
-RAW_PATH = Path("data/raw/pozos.csv")
-FEAST_REPO_PATH = Path("feature_store")
+RAW_PATH = BASE_DIR / "data" / "raw" / "pozos.csv"
+FEAST_REPO_PATH = BASE_DIR / "feature_store"
 
-
+_FEATURES_MODULE_PATH = FEAST_REPO_PATH / "features.py"
+_FEATURES_SPEC = importlib.util.spec_from_file_location("feature_store.features", _FEATURES_MODULE_PATH)
+if _FEATURES_SPEC is None or _FEATURES_SPEC.loader is None:
+    raise ImportError(f"No se pudo cargar el módulo de features desde {_FEATURES_MODULE_PATH}")
+_FEATURES_MODULE = importlib.util.module_from_spec(_FEATURES_SPEC)
+_FEATURES_SPEC.loader.exec_module(_FEATURES_MODULE)
+pozo = _FEATURES_MODULE.pozo
+well_stats = _FEATURES_MODULE.well_stats
 def load_raw_data() -> pd.DataFrame:
     if RAW_PATH.exists():
         logger.info(f"Cargando datos cacheados desde {RAW_PATH}")
