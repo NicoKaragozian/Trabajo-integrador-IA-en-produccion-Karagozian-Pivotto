@@ -62,6 +62,7 @@ Genera:
 
 ```
 oil-gas-forecast/
+├── config.yaml                ← hiperparámetros y rutas configurables
 ├── feature_store/
 │   ├── feature_store.yaml     ← config de Feast
 │   ├── features.py            ← Entity (idpozo) + FeatureView (well_stats)

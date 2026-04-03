@@ -1,0 +1,16 @@
+# Configuración del Feature Pipeline
+# Editá este archivo para ajustar rutas y hiperparámetros sin tocar el código.
+
+data:
+  # URL pública del dataset de producción de pozos no convencionales (datos.gob.ar)
+  url: "http://datos.energia.gob.ar/dataset/c846e79c-026c-4040-897f-1ad3543b407c/resource/b5b58cdc-9e07-41f9-b392-fb9ec68b0725/download/produccin-de-pozos-de-gas-y-petrleo-no-convencional.csv"
+  # Ruta relativa al directorio oil-gas-forecast/ donde se guarda el CSV crudo
+  raw_path: "data/raw/pozos.csv"
+
+feast:
+  # Ruta relativa al directorio oil-gas-forecast/ del repositorio de Feast
+  repo_path: "feature_store"
+
+features:
+  # Tamaño de la ventana rolling (en meses) para avg_prod_pet y avg_prod_gas
+  rolling_window: 10
