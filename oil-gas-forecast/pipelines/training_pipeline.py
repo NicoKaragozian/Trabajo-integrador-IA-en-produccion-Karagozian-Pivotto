@@ -29,6 +29,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 FEAST_FEATURES = [
+    "well_stats:prod_pet",  # target — incluido en el join para no perder el PIT alignment
     "well_stats:avg_prod_pet_10m",
     "well_stats:avg_prod_gas_10m",
     "well_stats:last_prod_pet",
@@ -51,7 +52,9 @@ def get_training_data(fecha_corte: str, repo_path: str = "./feature_store") -> p
     store = FeatureStore(repo_path=repo_path)
 
     df_all = pd.read_parquet(Path(repo_path) / "data" / "well_features.parquet")
-    df_filtered = df_all[df_all["fecha"] <= fecha_corte].copy()
+    df_all["fecha"] = pd.to_datetime(df_all["fecha"])
+    fecha_corte_ts = pd.to_datetime(fecha_corte)
+    df_filtered = df_all[df_all["fecha"] <= fecha_corte_ts].copy()
 
     if df_filtered.empty:
         raise ValueError(f"No hay datos hasta {fecha_corte}")
@@ -88,6 +91,13 @@ def register_model(run_id: str, model_name: str) -> str:
     """Registra el modelo y lo promueve a Production, archivando los anteriores."""
     client = mlflow.tracking.MlflowClient()
     model_uri = f"runs:/{run_id}/xgb_model"
+
+    # Crear el registered model si no existe (primer entrenamiento)
+    try:
+        client.create_registered_model(model_name)
+        logger.info(f"Registered Model '{model_name}' creado")
+    except mlflow.exceptions.MlflowException:
+        pass  # ya existe
 
     mv = client.create_model_version(name=model_name, source=model_uri, run_id=run_id)
 

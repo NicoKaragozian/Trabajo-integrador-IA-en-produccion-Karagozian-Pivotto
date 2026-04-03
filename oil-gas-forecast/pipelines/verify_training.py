@@ -42,6 +42,7 @@ def verify_training_data(fecha_corte: str, repo_path: str = "./feature_store"):
     training_df = get_training_data(fecha_corte, repo_path)
     assert not training_df.empty, "get_training_data devolvió un DataFrame vacío"
     required_cols = [
+        "prod_pet",  # target
         "avg_prod_pet_10m", "avg_prod_gas_10m", "last_prod_pet",
         "n_readings", "profundidad", "tipo_extraccion",
     ]
@@ -84,7 +85,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--skip-train",
         action="store_true",
-        help="Omitir el entrenamiento (solo verificar datos y registry)",
+        help="Omitir el entrenamiento y la verificación del registry (solo verificar datos)",
     )
     args = parser.parse_args()
 
