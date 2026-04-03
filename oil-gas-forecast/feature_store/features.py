@@ -8,7 +8,7 @@ pozo = Entity(
 )
 
 well_stats_source = FileSource(
-    path="data/well_features.parquet",
+    path="feature_store/data/well_features.parquet",
     timestamp_field="fecha",
 )
 

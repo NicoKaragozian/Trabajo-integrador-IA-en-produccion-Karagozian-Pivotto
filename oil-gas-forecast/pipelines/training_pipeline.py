@@ -74,6 +74,9 @@ def get_training_data(fecha_corte: str, repo_path: str = "./feature_store") -> p
         features=FEAST_FEATURES,
     ).to_df()
 
+    # Feast devuelve columnas como "well_stats__feature_name" → normalizar a nombres simples
+    training_df.columns = [c.split("__")[-1] if "__" in c else c for c in training_df.columns]
+
     logger.info(f"Training set: {len(training_df)} pozos hasta {fecha_corte}")
     return training_df
 
