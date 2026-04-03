@@ -127,7 +127,32 @@ def train(fecha_corte: str, config_path: str = "config.yaml") -> tuple:
     df = get_training_data(fecha_corte, repo_path).dropna()
 
     X = df[model_cfg["features"]]
-    y = df[model_cfg["target"]]
+
+    target_col = model_cfg["target"]
+    if target_col in df.columns:
+        y = df[target_col]
+    else:
+        qualified_target_cols = [col for col in df.columns if col.endswith(f":{target_col}")]
+        if len(qualified_target_cols) == 1:
+            y = df[qualified_target_cols[0]]
+            logger.info(
+                "Usando columna target calificada de Feast '%s' para target '%s'",
+                qualified_target_cols[0],
+                target_col,
+            )
+        elif len(qualified_target_cols) > 1:
+            raise KeyError(
+                f"Se encontraron múltiples columnas candidatas para target '{target_col}': "
+                f"{qualified_target_cols}. Ajustá get_training_data() o la configuración del target "
+                "para que el Point-in-Time Join devuelva una única columna objetivo."
+            )
+        else:
+            raise KeyError(
+                f"Target '{target_col}' no encontrado en training data. Columnas disponibles: "
+                f"{list(df.columns)}. Asegurá que get_training_data() incluya la columna objetivo "
+                "en el Point-in-Time Join de Feast (por ejemplo, agregando la feature target al set "
+                "solicitado) o que renombre consistentemente la columna resultante."
+            )
     X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
