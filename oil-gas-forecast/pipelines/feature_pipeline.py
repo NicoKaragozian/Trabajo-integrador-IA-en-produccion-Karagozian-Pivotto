@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 DATA_URL = (
-    "http://datos.energia.gob.ar/dataset/c846e79c-026c-4040-897f-1ad3543b407c"
+    "https://datos.energia.gob.ar/dataset/c846e79c-026c-4040-897f-1ad3543b407c"
     "/resource/b5b58cdc-9e07-41f9-b392-fb9ec68b0725"
     "/download/produccin-de-pozos-de-gas-y-petrleo-no-convencional.csv"
 )
