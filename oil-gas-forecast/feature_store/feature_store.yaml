@@ -1,4 +1,4 @@
-project: oil-gas-forecast
+project: oil_gas_forecast
 registry: feature_store/registry.db
 provider: local
 online_store:

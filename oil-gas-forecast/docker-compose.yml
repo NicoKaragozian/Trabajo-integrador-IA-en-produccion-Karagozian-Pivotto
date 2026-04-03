@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mlflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlflow}
+      POSTGRES_DB: ${POSTGRES_DB:-mlflow}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "mlflow"]
+      interval: 5s
+      retries: 5
+
+  mlflow:
+    build:
+      context: ./mlflow
+      dockerfile: Dockerfile
+    command: >
+      mlflow server
+      --backend-store-uri postgresql://${POSTGRES_USER:-mlflow}:${POSTGRES_PASSWORD:-mlflow}@postgres/${POSTGRES_DB:-mlflow}
+      --default-artifact-root /mlruns
+      --host 0.0.0.0 --port 6000
+    ports:
+      - "6000:6000"
+    volumes:
+      - ./mlruns:/mlruns
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:6000
+      - FEAST_REPO_PATH=/app/feature_store
+      - MODEL_NAME=${MODEL_NAME:-hydrocarbon-forecast-model}
+    volumes:
+      - ./feature_store:/app/feature_store
+      - ./pipelines:/app/pipelines
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml
+      - ./mlruns:/app/mlruns
+    depends_on:
+      - mlflow
+
+volumes:
+  postgres-data:
