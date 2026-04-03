@@ -5,55 +5,28 @@ Descarga datos crudos → limpieza → features MIT → materializa en Feast.
 Puede correrse localmente sin Docker:
     cd oil-gas-forecast
     python pipelines/feature_pipeline.py
-
-La configuración (rutas, URL del dataset, hiperparámetros) se lee desde
-oil-gas-forecast/config.yaml para evitar hardcodear valores en el código.
 """
-import importlib.util
 import logging
+import sys
 from pathlib import Path
 
 import pandas as pd
-import yaml
 from feast import FeatureStore
+
+# Permite importar feature_store/features.py desde cualquier CWD
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from feature_store.features import pozo, well_stats
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-_CONFIG_PATH = BASE_DIR / "config.yaml"
-
-if not _CONFIG_PATH.exists():
-    raise FileNotFoundError(
-        f"Archivo de configuración no encontrado: {_CONFIG_PATH}. "
-        "Asegurate de ejecutar el pipeline desde oil-gas-forecast/ o de que config.yaml exista."
-    )
-
-with _CONFIG_PATH.open() as _f:
-    try:
-        _cfg = yaml.safe_load(_f)
-    except yaml.YAMLError as exc:
-        raise RuntimeError(
-            f"No se pudo parsear {_CONFIG_PATH}. "
-            "Verificá la sintaxis YAML del archivo."
-        ) from exc
-
-if _cfg is None:
-    raise RuntimeError(f"El archivo de configuración {_CONFIG_PATH} está vacío.")
-
-DATA_URL = _cfg["data"]["url"]
-RAW_PATH = BASE_DIR / _cfg["data"]["raw_path"]
-FEAST_REPO_PATH = BASE_DIR / _cfg["feast"]["repo_path"]
-ROLLING_WINDOW: int = _cfg["features"]["rolling_window"]
-
-_FEATURES_MODULE_PATH = FEAST_REPO_PATH / "features.py"
-_FEATURES_SPEC = importlib.util.spec_from_file_location("feature_store.features", _FEATURES_MODULE_PATH)
-if _FEATURES_SPEC is None or _FEATURES_SPEC.loader is None:
-    raise ImportError(f"No se pudo cargar el módulo de features desde {_FEATURES_MODULE_PATH}")
-_FEATURES_MODULE = importlib.util.module_from_spec(_FEATURES_SPEC)
-_FEATURES_SPEC.loader.exec_module(_FEATURES_MODULE)
-pozo = _FEATURES_MODULE.pozo
-well_stats = _FEATURES_MODULE.well_stats
+DATA_URL = (
+    "http://datos.energia.gob.ar/dataset/c846e79c-026c-4040-897f-1ad3543b407c"
+    "/resource/b5b58cdc-9e07-41f9-b392-fb9ec68b0725"
+    "/download/produccin-de-pozos-de-gas-y-petrleo-no-convencional.csv"
+)
+RAW_PATH = Path("data/raw/pozos.csv")
+FEAST_REPO_PATH = Path("feature_store")
 
 
 def load_raw_data() -> pd.DataFrame:
@@ -95,29 +68,22 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def compute_features(df: pd.DataFrame, window: int = ROLLING_WINDOW) -> pd.DataFrame:
+def compute_features(df: pd.DataFrame, window: int = 10) -> pd.DataFrame:
     """
     Computa Model-Independent Transformations (MIT).
 
     Estas transformaciones no dependen del algoritmo de ML final y pueden
     ser reutilizadas por múltiples modelos. Se almacenan en el Feature Store
     para garantizar consistencia entre training e inferencia.
-
-    El tamaño de ventana rolling (`window`) se toma por defecto de config.yaml
-    (clave ``features.rolling_window``) para que las columnas generadas
-    reflejen siempre el valor configurado.
     """
     df = df.sort_values(["idpozo", "fecha"])
     grp = df.groupby("idpozo")
 
-    pet_col = f"avg_prod_pet_{window}m"
-    gas_col = f"avg_prod_gas_{window}m"
-
     # Promedio de las últimas `window` lecturas por pozo
-    df[pet_col] = grp["prod_pet"].transform(
+    df["avg_prod_pet_10m"] = grp["prod_pet"].transform(
         lambda x: x.rolling(window, min_periods=1).mean()
     )
-    df[gas_col] = grp["prod_gas"].transform(
+    df["avg_prod_gas_10m"] = grp["prod_gas"].transform(
         lambda x: x.rolling(window, min_periods=1).mean()
     )
 
@@ -130,7 +96,7 @@ def compute_features(df: pd.DataFrame, window: int = ROLLING_WINDOW) -> pd.DataF
     feature_cols = [
         "idpozo", "fecha",
         "prod_pet", "prod_gas", "prod_agua",
-        pet_col, gas_col,
+        "avg_prod_pet_10m", "avg_prod_gas_10m",
         "last_prod_pet", "n_readings",
         "profundidad", "tipo_extraccion",
     ]
