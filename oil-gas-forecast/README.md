@@ -1,22 +1,50 @@
 # Oil & Gas Forecast — IA en Producción
 
-Pipeline de ML para pronosticar la producción futura de pozos de hidrocarburos no convencionales (Argentina). El foco está en **ML Engineering**: Feature Store, reproducibilidad, tracking de experimentos y API REST lista para producción.
+Plataforma de pronóstico de producción de hidrocarburos no convencionales.
+Trabajo Integrador — IA en Producción · MIA204 · UdeSA 2026
+
+**Equipo:** Nicolás Karagozian · Valentino Pivotto
+
+---
+
+## Descripción
+
+Sistema de ML Engineering para pronosticar la producción futura de pozos de gas y petróleo no convencional. El foco está en los procesos de ingeniería (Feature Store, tracking de experimentos, API REST), no en la sofisticación del modelo predictivo.
+
+**Dataset:** Producción de Pozos No Convencionales — Secretaría de Energía, Argentina (datos.gob.ar)
+~396.000 registros mensuales · 4.833 pozos · 2006–2026
 
 ---
 
 ## Arquitectura
 
 ```
-docker-compose
-├── postgres          ← backend de MLflow
-├── mlflow            ← tracking server + model registry  (puerto 6000)
-└── api (FastAPI)     ← /forecast + /wells                (puerto 8000)
-      ├── lee features del Feature Store online (Feast + SQLite)
-      └── carga el modelo en Production desde MLflow Registry
+datos.gob.ar
+     │
+     ▼
+feature_pipeline.py  ──────────────────────────────────┐
+     │                                                  │
+     ▼                                                  ▼
+Feature Store (Feast)                           offline store
+  offline: Parquet                              (Parquet histórico)
+  online:  SQLite                                       │
+     │                                                  ▼
+     │                                        training_pipeline.py
+     │                                                  │
+     │◄─────────────────── Point-in-Time Join ──────────┘
+     │                                                  │
+     │                                                  ▼
+     │                                            MLflow Registry
+     │                                           (modelo Production)
+     ▼                                                  │
+online store  ──────────────────────────────► FastAPI /forecast
+```
 
-Pipelines (ejecutar a mano o vía Airflow):
-  feature_pipeline.py   →  datos crudos → Feature Store offline + online
-  training_pipeline.py  →  Feature Store offline → XGBoost → MLflow
+**Servicios docker-compose:**
+```
+├── postgres   ← backend de MLflow
+├── mlflow     ← tracking server + model registry  (puerto 6000)
+└── api        ← FastAPI /forecast + /wells        (puerto 8000)
 ```
 
 ---
@@ -26,55 +54,55 @@ Pipelines (ejecutar a mano o vía Airflow):
 ### 1. Clonar y configurar
 
 ```bash
-git clone <repo-url>
-cd oil-gas-forecast
-cp .env .env.local   # opcional: ajustar variables
+git clone https://github.com/NicoKaragozian/Trabajo-integrador-IA-en-produccion-Karagozian-Pivotto.git
+cd Trabajo-integrador-IA-en-produccion-Karagozian-Pivotto/oil-gas-forecast
+cp .env.example .env   # ajustar si es necesario
 ```
 
 ### 2. Levantar la infraestructura
 
 ```bash
-docker-compose up -d
+docker compose up -d --build
 ```
 
 Servicios disponibles:
 - **MLflow UI:** http://localhost:6000
 - **API + Swagger:** http://localhost:8000/docs
+- **Health check:** http://localhost:8000/health
 
 ### 3. Generar el Feature Store
 
 ```bash
-docker-compose exec api python pipelines/feature_pipeline.py
+docker compose exec api python pipelines/feature_pipeline.py
 ```
 
-Descarga el dataset, computa las features (MIT) y materializa el Feature Store offline y online.
+Descarga el dataset (~396k registros), computa features MIT y materializa el Feature Store offline (Parquet) y online (SQLite).
 
-### 4. Entrenar el modelo
+### 4. Verificar el Feature Store (opcional)
 
 ```bash
-docker-compose exec api python pipelines/training_pipeline.py --fecha 2024-06-01
+docker compose exec api python pipelines/verify_feast.py
 ```
 
-Entrena un XGBoost con datos hasta la fecha indicada, loguea métricas y artefactos en MLflow, y registra el modelo como `Production` en el Registry.
+Simula consultas al online store (como haría la API) y un Point-in-Time join (como haría el training pipeline).
 
-### 5. Consultar la API
+### 5. Entrenar el modelo
+
+```bash
+docker compose exec api python pipelines/training_pipeline.py --fecha 2024-06-01
+```
+
+Entrena XGBoost con datos hasta la fecha indicada, loguea métricas y artefactos en MLflow, registra el modelo en Production.
+
+### 6. Consultar la API
 
 ```bash
 # Listar pozos activos al 1 de junio 2024
 curl "http://localhost:8000/api/v1/wells?date_query=2024-06-01"
 
-# Pronóstico de producción mensual para un pozo
-curl "http://localhost:8000/api/v1/forecast?id_well=18122-001&date_start=2024-07-01&date_end=2024-12-01"
+# Pronóstico mensual para un pozo (julio–diciembre 2024)
+curl "http://localhost:8000/api/v1/forecast?id_well=132879&date_start=2024-07-01&date_end=2024-12-01"
 ```
-
----
-
-## Dataset
-
-- **Producción de pozos (principal):** [datos.gob.ar](https://datos.gob.ar/dataset/energia-produccion-petroleo-gas-por-pozo-capitulo-iv/archivo/energia_b5b58cdc-9e07-41f9-b392-fb9ec68b0725)
-- **Listado de pozos:** [datos.gob.ar](https://datos.gob.ar/dataset/energia-produccion-petroleo-gas-por-pozo-capitulo-iv/archivo/energia_cbfa4d79-ffb3-4096-bab5-eb0dde9a8385)
-
-El `feature_pipeline.py` lo descarga automáticamente en la primera ejecución y lo cachea en `data/raw/pozos.csv`.
 
 ---
 
@@ -88,12 +116,9 @@ Lista los pozos con datos disponibles hasta una fecha dada.
 |-----------|------|-------------|
 | `date_query` | `date` | Fecha de corte (`YYYY-MM-DD`) |
 
-**Ejemplo de respuesta:**
+**Respuesta:**
 ```json
-[
-  {"id_well": "18122-001"},
-  {"id_well": "18122-002"}
-]
+[{"id_well": "132879"}, {"id_well": "132491"}]
 ```
 
 ### `GET /api/v1/forecast`
@@ -106,39 +131,36 @@ Pronóstico mensual de producción de petróleo para un pozo.
 | `date_start` | `date` | Inicio del horizonte (`YYYY-MM-DD`) |
 | `date_end` | `date` | Fin del horizonte (`YYYY-MM-DD`) |
 
-**Ejemplo de respuesta:**
+**Respuesta:**
 ```json
 {
-  "id_well": "18122-001",
+  "id_well": "132879",
   "data": [
     {"date": "2024-07-01", "prod": 142.5},
-    {"date": "2024-08-01", "prod": 139.65},
-    {"date": "2024-09-01", "prod": 136.86}
+    {"date": "2024-08-01", "prod": 139.65}
   ]
 }
 ```
 
 ### `GET /health`
 
-Estado del servicio y si el modelo está cargado.
+Estado del servicio. `model_loaded: false` antes de correr el training pipeline.
 
 ---
 
 ## Reproducibilidad
 
-El sistema garantiza reproducibilidad a través de tres pilares:
-
 | Pilar | Implementación |
 |-------|----------------|
 | **Código** | Git + `config.yaml` con todos los hiperparámetros (nunca hardcodeados) + `random_state=42` + config logueado como artefacto en MLflow |
 | **Datos** | Feast offline store con timestamp. El Point-in-Time Join con `--fecha` garantiza los mismos datos para la misma fecha de corte, siempre. |
-| **Entorno** | Docker con `requirements.txt` pinneado. Cualquiera reproduce el entorno exacto con `docker-compose up`. |
+| **Entorno** | Docker con `requirements.txt` pinneado. `docker compose up` reproduce el entorno exacto en cualquier máquina. |
 
 **Verificación:** dos runs con la misma `--fecha` deben producir el mismo `val_mae`:
 
 ```bash
-python pipelines/training_pipeline.py --fecha 2024-06-01  # Run 1
-python pipelines/training_pipeline.py --fecha 2024-06-01  # Run 2 → métricas idénticas
+docker compose exec api python pipelines/training_pipeline.py --fecha 2024-06-01  # Run 1
+docker compose exec api python pipelines/training_pipeline.py --fecha 2024-06-01  # Run 2 → métricas idénticas
 ```
 
 ---
@@ -148,87 +170,82 @@ python pipelines/training_pipeline.py --fecha 2024-06-01  # Run 2 → métricas 
 ```
 oil-gas-forecast/
 ├── docker-compose.yml       ← infraestructura completa
-├── .env                     ← variables de entorno (no commitear credenciales reales)
+├── .env.example             ← template de variables de entorno
 ├── config.yaml              ← hiperparámetros del modelo e inferencia
-├── README.md
+├── mlflow/
+│   └── Dockerfile           ← imagen custom de MLflow
 ├── feature_store/
-│   ├── feature_store.yaml   ← configuración de Feast (local, SQLite online store)
-│   ├── features.py          ← Entity + FeatureView (usados en training e inferencia)
-│   └── data/
-│       └── well_features.parquet   ← generado por feature_pipeline.py
+│   ├── feature_store.yaml   ← config de Feast (local, SQLite online store)
+│   ├── features.py          ← Entity (idpozo) + FeatureView (well_stats)
+│   └── data/                ← offline store (generado, no commiteado)
 ├── pipelines/
-│   ├── feature_pipeline.py  ← datos → features → Feast (offline + online)
-│   └── training_pipeline.py ← Feast → XGBoost → MLflow tracking + registry
+│   ├── feature_pipeline.py  ← datos crudos → features → Feast offline + online
+│   ├── training_pipeline.py ← Feast offline → XGBoost → MLflow tracking + registry
+│   └── verify_feast.py      ← verifica que el Feature Store funciona correctamente
 ├── api/
 │   ├── main.py              ← FastAPI: /forecast, /wells, /health
 │   ├── Dockerfile
 │   └── requirements.txt
+├── notebooks/
+│   └── exploracion.ipynb    ← EDA del dataset
 └── data/
-    └── raw/
-        └── pozos.csv        ← cacheado por feature_pipeline.py (no commitear)
+    └── raw/                 ← datos crudos (no commiteados)
 ```
 
 ---
 
 ## Decisiones de diseño
 
-### Feature Store (Feast)
+### Feature Store con Feast (provider local)
 
-Sin Feature Store, las transformaciones de features estarían duplicadas: una vez en `training_pipeline.py` y otra en la API. Eso introduce **Training-Serving Skew** — el modelo no crashea, simplemente predice peor en producción y el bug es difícil de encontrar.
+Sin Feature Store, las transformaciones de features estarían duplicadas en `training_pipeline.py` y en la API, introduciendo **Training-Serving Skew**. Con Feast, `features.py` es la única fuente de verdad: el training usa el **offline store** con Point-in-Time Join (sin data leakage), y la API usa el **online store** (SQLite, baja latencia).
 
-Con Feast, `features.py` es la única fuente de verdad. El training usa el **offline store** (con Point-in-Time Join para evitar data leakage), y la API usa el **online store** (SQLite, baja latencia). Misma lógica, cero skew.
+Se eligió SQLite para el online store porque el dataset tiene miles de pozos, no millones de requests por segundo. Migrar a Redis es una línea en `feature_store.yaml`.
 
-Se eligió SQLite como online store porque el dataset tiene miles de pozos, no millones de requests por segundo. Migrar a Redis es una línea en `feature_store.yaml`, sin tocar código.
+### Features MIT (Model-Independent Transformations)
+
+| Feature | Descripción |
+|---------|-------------|
+| `avg_prod_pet_10m` | Promedio rolling de 10 meses — captura tendencia sin requerir historia muy larga |
+| `avg_prod_gas_10m` | Idem para gas |
+| `last_prod_pet` | `shift(1)` — evita data leakage: en producción no conocemos el valor actual |
+| `n_readings` | Historial disponible del pozo — permite al modelo ponderar pozos con poca historia |
+| `profundidad` | Característica estática — correlaciona con tipo de formación |
+| `tipo_extraccion` | Encodeo ordinal — suficiente para XGBoost |
 
 ### MLflow Model Registry
 
-La API carga siempre `models:/hydrocarbon-forecast-model/Production`. El modelo en `Production` es explícito, versionado y tiene todo el linaje (run, datos, métricas). El rollback es trivial: promover la versión anterior a `Production`.
+La API carga siempre `models:/hydrocarbon-forecast-model/Production`. El modelo en Production es explícito, versionado y tiene todo el linaje (run, datos, métricas). El rollback es trivial: promover la versión anterior a Production.
 
 ### FastAPI
 
-El enunciado exige documentación OpenAPI (Swagger). FastAPI la genera **automáticamente** a partir de los type hints (Pydantic). Con Flask habría que escribirla a mano. Los schemas `ForecastResponse` y `WellInfo` también validan los tipos de respuesta en tiempo de ejecución.
+El enunciado exige documentación OpenAPI (Swagger). FastAPI la genera **automáticamente** a partir de los type hints (Pydantic). Los schemas `ForecastResponse` y `WellInfo` validan los tipos de respuesta en tiempo de ejecución.
 
 ### Modelo: XGBoost con ventanas temporales
 
-El foco del trabajo es ML Engineering, no la precisión del modelo. XGBoost con features de ventana temporal (promedio 10 lecturas, última lectura, n_readings) captura la estructura temporal sin la complejidad de un modelo secuencial. Es interpretable (feature importance), tiene tracking nativo en MLflow y es determinista con `random_state=42`.
+XGBoost + features de ventana temporal captura la estructura temporal sin la complejidad de un modelo secuencial. Es interpretable (feature importance), tiene tracking nativo en MLflow y es determinista con `random_state=42`.
 
 ### Pronóstico hacia el futuro: Decline Curve
 
-El modelo predice la producción base de un pozo. Para generar una serie `date_start → date_end`, se aplica una curva de decline exponencial:
+Para generar la serie `date_start → date_end`, se aplica decline exponencial sobre la predicción base:
 
 ```
 prod(mes i) = prod_base × (1 - decline_rate)^i
 ```
 
-Con `decline_rate = 0.02` (configurable en `config.yaml`). Los pozos de petróleo y gas siguen patrones de decline físicamente bien estudiados. **Limitación conocida:** la tasa es global para todos los pozos; una versión más sofisticada calcularía la tasa histórica por pozo desde el Feature Store.
+Con `decline_rate = 0.02` (configurable en `config.yaml`). **Limitación conocida:** la tasa es global para todos los pozos; una versión más sofisticada la calcularía por pozo desde el Feature Store.
 
 ---
 
 ## Comandos rápidos
 
 ```bash
-# Levantar todo
-docker-compose up -d
-
-# Feature Pipeline
-docker-compose exec api python pipelines/feature_pipeline.py
-
-# Training (parametrizable por fecha)
-docker-compose exec api python pipelines/training_pipeline.py --fecha 2024-06-01
-docker-compose exec api python pipelines/training_pipeline.py --fecha 2023-12-01
-
-# Endpoints
+docker compose up -d --build
+docker compose exec api python pipelines/feature_pipeline.py
+docker compose exec api python pipelines/verify_feast.py
+docker compose exec api python pipelines/training_pipeline.py --fecha 2024-06-01
 curl "http://localhost:8000/api/v1/wells?date_query=2024-06-01"
-curl "http://localhost:8000/api/v1/forecast?id_well=18122-001&date_start=2024-07-01&date_end=2024-12-01"
-
-# UIs
+curl "http://localhost:8000/api/v1/forecast?id_well=132879&date_start=2024-07-01&date_end=2024-12-01"
 open http://localhost:6000       # MLflow
 open http://localhost:8000/docs  # Swagger
 ```
-
----
-
-## Equipo
-
-- **Nico Karagozian** — Feature Pipeline, Feature Store, Training Pipeline, MLflow
-- **Valentino Pivotto** — Docker Compose, infra, API REST (FastAPI), README
