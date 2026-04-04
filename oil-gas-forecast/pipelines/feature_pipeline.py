@@ -9,6 +9,7 @@ Puede correrse localmente sin Docker:
 import logging
 import sys
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 
 import pandas as pd
 from feast import FeatureStore
@@ -116,11 +117,26 @@ def materialize_to_feast(df: pd.DataFrame, repo_path: Path = FEAST_REPO_PATH):
     store.apply([pozo, well_stats])
     logger.info("Registry de Feast actualizado")
 
-    # 3. Online store: última lectura por pozo (para inferencia en tiempo real)
-    latest = df.sort_values("fecha").groupby("idpozo").tail(1).copy()
-    latest["event_timestamp"] = latest["fecha"]
-    store.write_to_online_store("well_stats", latest)
-    logger.info(f"Online store materializado: {latest['idpozo'].nunique():,} pozos activos")
+    # 3. Online store: write_to_online_store con la última lectura por pozo
+    # Usamos write_to_online_store (no materialize) por compatibilidad con la versión
+    # de Feast/pandas instalada en el entorno (materialize falla con tz_convert).
+    # Tomamos la fila más reciente por pozo — el estado actual para inferencia.
+    latest = df.sort_values("fecha").groupby("idpozo").last().reset_index()
+
+    # event_timestamp con timezone UTC: Feast lo requiere para el control de TTL
+    latest["event_timestamp"] = pd.Timestamp.now(tz="UTC")
+
+    online_cols = [
+        "idpozo", "event_timestamp",
+        "avg_prod_pet_10m", "avg_prod_gas_10m",
+        "last_prod_pet", "n_readings",
+        "profundidad", "tipo_extraccion",
+    ]
+    available = [c for c in online_cols if c in latest.columns]
+    store.write_to_online_store(feature_view_name="well_stats", df=latest[available])
+
+    n_wells = latest["idpozo"].nunique()
+    logger.info(f"Online store actualizado: {n_wells:,} pozos activos")
 
 
 if __name__ == "__main__":

@@ -43,6 +43,7 @@ services:
       - ./data:/app/data
       - ./config.yaml:/app/config.yaml
       - ./mlruns:/app/mlruns
+      - ./mlruns:/mlruns
     depends_on:
       - mlflow
 

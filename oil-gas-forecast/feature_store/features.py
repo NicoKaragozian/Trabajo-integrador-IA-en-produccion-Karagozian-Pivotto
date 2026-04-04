@@ -15,7 +15,7 @@ well_stats_source = FileSource(
 well_stats = FeatureView(
     name="well_stats",
     entities=[pozo],
-    ttl=timedelta(days=365 * 5),
+    ttl=timedelta(days=365 * 20),  # 20 años: cubre datos históricos hasta ~2037
     schema=[
         # Producción cruda
         Field(name="prod_pet",         dtype=Float32),

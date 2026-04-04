@@ -95,12 +95,14 @@ def get_forecast(
         )
 
     # 1. Leer features del online store de Feast (baja latencia)
+    # idpozo puede estar almacenado como int en el feature store
+    entity_id = int(id_well) if id_well.isdigit() else id_well
     online = STORE.get_online_features(
         features=FEAST_FEATURES,
-        entity_rows=[{"idpozo": id_well}],
+        entity_rows=[{"idpozo": entity_id}],
     ).to_dict()
 
-    if online.get("well_stats__avg_prod_pet_10m", [None])[0] is None:
+    if online.get("avg_prod_pet_10m", [None])[0] is None:
         raise HTTPException(
             404, f"Pozo '{id_well}' no encontrado en el Feature Store."
         )
@@ -109,12 +111,12 @@ def get_forecast(
     X = pd.DataFrame(
         [
             {
-                "avg_prod_pet_10m": online["well_stats__avg_prod_pet_10m"][0] or 0.0,
-                "avg_prod_gas_10m": online["well_stats__avg_prod_gas_10m"][0] or 0.0,
-                "last_prod_pet": online["well_stats__last_prod_pet"][0] or 0.0,
-                "n_readings": online["well_stats__n_readings"][0] or 0,
-                "profundidad": online["well_stats__profundidad"][0] or 0.0,
-                "tipo_extraccion": online["well_stats__tipo_extraccion"][0] or 0,
+                "avg_prod_pet_10m": online["avg_prod_pet_10m"][0] or 0.0,
+                "avg_prod_gas_10m": online["avg_prod_gas_10m"][0] or 0.0,
+                "last_prod_pet": online["last_prod_pet"][0] or 0.0,
+                "n_readings": online["n_readings"][0] or 0,
+                "profundidad": online["profundidad"][0] or 0.0,
+                "tipo_extraccion": online["tipo_extraccion"][0] or 0,
             }
         ]
     )[FEATURE_COLS]
