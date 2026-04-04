@@ -22,3 +22,14 @@ venv/
 
 # macOS
 .DS_Store
+
+# Scripts locales de automatización (no son parte del proyecto)
+*.command
+*.sh
+
+# IDEs
+.idea/
+.vscode/
+
+# Claude Cowork
+.claude/
