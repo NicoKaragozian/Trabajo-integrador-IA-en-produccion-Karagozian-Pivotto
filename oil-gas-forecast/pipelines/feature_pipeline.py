@@ -127,7 +127,8 @@ def materialize_to_feast(df: pd.DataFrame, repo_path: Path = FEAST_REPO_PATH):
     latest["event_timestamp"] = pd.Timestamp.now(tz="UTC")
 
     online_cols = [
-        "idpozo", "event_timestamp",
+        "idpozo", "event_timestamp", "fecha",
+        "prod_pet", "prod_gas", "prod_agua",
         "avg_prod_pet_10m", "avg_prod_gas_10m",
         "last_prod_pet", "n_readings",
         "profundidad", "tipo_extraccion",
