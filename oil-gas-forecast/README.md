@@ -43,7 +43,7 @@ online store  ──────────────────────
 **Servicios docker-compose:**
 ```
 ├── postgres   ← backend de MLflow
-├── mlflow     ← tracking server + model registry  (puerto 6000)
+├── mlflow     ← tracking server + model registry  (puerto 5001)
 └── api        ← FastAPI /forecast + /wells        (puerto 8000)
 ```
 
@@ -66,33 +66,43 @@ docker compose up -d --build
 ```
 
 Servicios disponibles:
-- **MLflow UI:** http://localhost:6000
+- **MLflow UI:** http://localhost:5001
 - **API + Swagger:** http://localhost:8000/docs
 - **Health check:** http://localhost:8000/health
 
-### 3. Generar el Feature Store
+### 3. Preparar el entorno local para los pipelines
+
+Los pipelines (feature + training) se corren localmente con un virtualenv de dependencias pinneadas:
 
 ```bash
-docker compose exec api python pipelines/feature_pipeline.py
+python3 -m venv venv
+source venv/bin/activate
+pip install -r pipelines/requirements.txt
+```
+
+> **Nota:** `protobuf<5` es un requisito crítico para la compatibilidad entre `mlflow==2.9.1` y `feast==0.38.0`.
+
+### 4. Generar el Feature Store
+
+```bash
+python3 pipelines/feature_pipeline.py
 ```
 
 Descarga el dataset (~396k registros), computa features MIT y materializa el Feature Store offline (Parquet) y online (SQLite).
 
-### 4. Verificar el Feature Store (opcional)
-
-```bash
-docker compose exec api python pipelines/verify_feast.py
-```
-
-Simula consultas al online store (como haría la API) y un Point-in-Time join (como haría el training pipeline).
-
 ### 5. Entrenar el modelo
 
 ```bash
-docker compose exec api python pipelines/training_pipeline.py --fecha 2024-06-01
+MLFLOW_TRACKING_URI=http://localhost:5001 python3 pipelines/training_pipeline.py --fecha 2024-06-01
 ```
 
-Entrena XGBoost con datos hasta la fecha indicada, loguea métricas y artefactos en MLflow, registra el modelo en Production.
+Entrena XGBoost con datos hasta la fecha indicada, loguea métricas y artefactos en MLflow, registra el modelo en Production. Para entrenar con otra fecha de corte basta con cambiar `--fecha`.
+
+Después del primer entrenamiento, reiniciar la API para que cargue el modelo:
+
+```bash
+docker compose restart api
+```
 
 ### 6. Consultar la API
 
@@ -101,7 +111,7 @@ Entrena XGBoost con datos hasta la fecha indicada, loguea métricas y artefactos
 curl "http://localhost:8000/api/v1/wells?date_query=2024-06-01"
 
 # Pronóstico mensual para un pozo (julio–diciembre 2024)
-curl "http://localhost:8000/api/v1/forecast?id_well=132879&date_start=2024-07-01&date_end=2024-12-01"
+curl "http://localhost:8000/api/v1/forecast?id_well=3640&date_start=2024-07-01&date_end=2024-12-01"
 ```
 
 ---
@@ -154,7 +164,7 @@ Estado del servicio. `model_loaded: false` antes de correr el training pipeline.
 |-------|----------------|
 | **Código** | Git + `config.yaml` con todos los hiperparámetros (nunca hardcodeados) + `random_state=42` + config logueado como artefacto en MLflow |
 | **Datos** | Feast offline store con timestamp. El Point-in-Time Join con `--fecha` garantiza los mismos datos para la misma fecha de corte, siempre. |
-| **Entorno** | Docker con `requirements.txt` pinneado. `docker compose up` reproduce el entorno exacto en cualquier máquina. |
+| **Entorno** | Docker con `api/requirements.txt` pinneado para la API. Pipelines locales con `pipelines/requirements.txt` + virtualenv (`protobuf<5` garantiza compatibilidad mlflow+feast). |
 
 **Verificación:** dos runs con la misma `--fecha` deben producir el mismo `val_mae`:
 
@@ -240,12 +250,21 @@ Con `decline_rate = 0.02` (configurable en `config.yaml`). **Limitación conocid
 ## Comandos rápidos
 
 ```bash
+# Infraestructura
 docker compose up -d --build
-docker compose exec api python pipelines/feature_pipeline.py
-docker compose exec api python pipelines/verify_feast.py
-docker compose exec api python pipelines/training_pipeline.py --fecha 2024-06-01
+
+# Entorno local (una sola vez)
+python3 -m venv venv && source venv/bin/activate
+pip install -r pipelines/requirements.txt
+
+# Pipelines (con venv activo)
+python3 pipelines/feature_pipeline.py
+MLFLOW_TRACKING_URI=http://localhost:5001 python3 pipelines/training_pipeline.py --fecha 2024-06-01
+docker compose restart api
+
+# API
 curl "http://localhost:8000/api/v1/wells?date_query=2024-06-01"
-curl "http://localhost:8000/api/v1/forecast?id_well=132879&date_start=2024-07-01&date_end=2024-12-01"
-open http://localhost:6000       # MLflow
+curl "http://localhost:8000/api/v1/forecast?id_well=3640&date_start=2024-07-01&date_end=2024-12-01"
+open http://localhost:5001       # MLflow
 open http://localhost:8000/docs  # Swagger
 ```

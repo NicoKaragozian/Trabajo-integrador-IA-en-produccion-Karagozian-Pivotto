@@ -19,7 +19,8 @@ services:
     command: >
       mlflow server
       --backend-store-uri postgresql://${POSTGRES_USER:-mlflow}:${POSTGRES_PASSWORD:-mlflow}@postgres/${POSTGRES_DB:-mlflow}
-      --default-artifact-root /mlruns
+      --artifacts-destination /mlruns
+      --serve-artifacts
       --host 0.0.0.0 --port 6000
     ports:
       - "5001:6000"
