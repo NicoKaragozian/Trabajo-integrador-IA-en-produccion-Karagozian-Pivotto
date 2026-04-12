@@ -1,3 +1,42 @@
+# ── Archivos de la raíz del repo ─────────────────────────────
 \[RFC\] Trabajo Integrador de IA en Prod.pdf
 plan_implementacion_entrega_parcial.md
 CLAUDE.md
+
+# ── oil-gas-forecast ─────────────────────────────────────────
+
+# Data (no commitear datos crudos ni procesados)
+*.parquet
+*.csv
+
+# Feature Store (generados por Feast)
+oil-gas-forecast/feature_store/registry.db
+oil-gas-forecast/feature_store/online_store.db
+
+# MLflow (artefactos locales)
+mlruns/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# Scripts locales de automatización
+*.command
+*.sh
+
+# IDEs
+.idea/
+.vscode/
+
+# Claude Cowork
+.claude/
