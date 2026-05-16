@@ -19,3 +19,11 @@ model:
 
 inference:
   decline_rate_monthly: 0.02  # 2% decline mensual en el pronóstico
+
+monitoring:
+  drift:
+    p_value_threshold: 0.05    # umbral del KS test (alibi-detect) para flagear drift por feature
+    window_months: 3           # ventana de meses para baseline y para período actual
+  decay:
+    threshold_pct: 20.0        # % de aumento del MAE actual vs histórico que dispara alerta
+    lookback_runs: 5           # cantidad de runs históricos a promediar como baseline

@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 import mlflow
+import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -45,7 +46,7 @@ def get_latest_run_id(experiment_name: str) -> str:
 
 
 def verify_ks_drift(detector: DriftDetector, fecha_corte: str):
-    result = detector.compute_ks_drift(fecha_corte, window_months=3)
+    result = detector.compute_ks_drift(fecha_corte)
     assert "is_drift" in result, "Falta is_drift en el resultado de KS drift"
     assert "p_values" in result, "Falta p_values en el resultado de KS drift"
 
@@ -66,7 +67,7 @@ def verify_ks_drift(detector: DriftDetector, fecha_corte: str):
 
 
 def verify_model_decay(detector: DriftDetector, run_id: str):
-    result = detector.compute_model_decay(run_id, lookback_runs=5)
+    result = detector.compute_model_decay(run_id)
     assert "is_decay" in result, "Falta is_decay en el resultado de model decay"
 
     if result.get("error"):
@@ -86,8 +87,8 @@ def verify_model_decay(detector: DriftDetector, run_id: str):
     )
 
 
-def verify_report_generation(run_id: str, fecha_corte: str, repo_path: str):
-    report = generate_report(run_id, fecha_corte, repo_path)
+def verify_report_generation(run_id: str, fecha_corte: str, repo_path: str, config_path: str):
+    report = generate_report(run_id, fecha_corte, repo_path, config_path)
 
     report_path = Path(os.getenv("MONITORING_REPORT_PATH", "./data/monitoring_report.json"))
     assert report_path.exists(), f"El reporte no se persistió en {report_path}"
@@ -106,6 +107,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Verificar el módulo de monitoring")
     parser.add_argument("--fecha", default="2024-06-01", help="Fecha de corte YYYY-MM-DD")
     parser.add_argument("--run-id", default=None, help="Run de MLflow (default: último del experimento)")
+    parser.add_argument("--config", default="config.yaml", help="Path a config.yaml")
     args = parser.parse_args()
 
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:6000"))
@@ -115,10 +117,13 @@ if __name__ == "__main__":
     run_id = args.run_id or get_latest_run_id(experiment_name)
     logger.info("Usando run_id=%s", run_id)
 
-    detector = DriftDetector(repo_path=repo_path)
+    with open(args.config) as f:
+        monitoring_config = yaml.safe_load(f)["monitoring"]
+
+    detector = DriftDetector(repo_path=repo_path, config=monitoring_config)
 
     print("\n=== Verificación del módulo de monitoring ===\n")
     verify_ks_drift(detector, args.fecha)
     verify_model_decay(detector, run_id)
-    verify_report_generation(run_id, args.fecha, repo_path)
+    verify_report_generation(run_id, args.fecha, repo_path, args.config)
     print("\n✅ Todas las verificaciones pasaron correctamente.\n")
