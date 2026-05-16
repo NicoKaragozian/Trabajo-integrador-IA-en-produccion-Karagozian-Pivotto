@@ -118,9 +118,15 @@ if __name__ == "__main__":
     logger.info("Usando run_id=%s", run_id)
 
     with open(args.config) as f:
-        monitoring_config = yaml.safe_load(f)["monitoring"]
+        full_config = yaml.safe_load(f)
+    monitoring_config = full_config["monitoring"]
+    feature_cols = full_config["model"]["features"]
 
-    detector = DriftDetector(repo_path=repo_path, config=monitoring_config)
+    detector = DriftDetector(
+        repo_path=repo_path,
+        config=monitoring_config,
+        feature_cols=feature_cols,
+    )
 
     print("\n=== Verificación del módulo de monitoring ===\n")
     verify_ks_drift(detector, args.fecha)

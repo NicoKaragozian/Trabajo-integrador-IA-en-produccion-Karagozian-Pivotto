@@ -43,9 +43,15 @@ def generate_report(
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:6000"))
 
     with open(config_path) as f:
-        monitoring_config = yaml.safe_load(f)["monitoring"]
+        full_config = yaml.safe_load(f)
+    monitoring_config = full_config["monitoring"]
+    feature_cols = full_config["model"]["features"]
 
-    detector = DriftDetector(repo_path=repo_path, config=monitoring_config)
+    detector = DriftDetector(
+        repo_path=repo_path,
+        config=monitoring_config,
+        feature_cols=feature_cols,
+    )
 
     drift_result = detector.compute_ks_drift(fecha_corte)
     decay_result = detector.compute_model_decay(run_id)
