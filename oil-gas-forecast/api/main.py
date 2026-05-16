@@ -1,7 +1,9 @@
+import json
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from typing import List
 from datetime import date
+from pathlib import Path
 import mlflow
 import mlflow.xgboost
 from feast import FeatureStore
@@ -142,3 +144,31 @@ def get_forecast(
 @app.get("/health")
 def health():
     return {"status": "ok", "model_loaded": MODEL is not None}
+
+
+# GET /monitoring/report — reporte de data drift + model decay generado por el pipeline
+@app.get("/monitoring/report")
+def get_monitoring_report():
+    """
+    Devuelve el último reporte de monitoring generado por el pipeline de Airflow.
+
+    El reporte incluye:
+      - data_drift: KS test por feature contra el baseline histórico
+      - model_decay: comparación del MAE actual vs promedio de últimos N runs
+      - alerts: lista de alertas activas (drift o decay detectado)
+    """
+    report_path = Path(
+        os.getenv("MONITORING_REPORT_PATH", "/app/data/monitoring_report.json")
+    )
+
+    if not report_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "No hay reporte de monitoring disponible. "
+                "Ejecutar el pipeline de monitoring primero."
+            ),
+        )
+
+    with open(report_path) as f:
+        return json.load(f)
