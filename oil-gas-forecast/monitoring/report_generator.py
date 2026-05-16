@@ -10,7 +10,7 @@ Junta data drift + model decay en un único JSON que:
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import mlflow
@@ -35,13 +35,18 @@ def generate_report(
     Devuelve el reporte como dict por si el caller lo quiere inspeccionar
     (ej. el monitoring_task del DAG, para pasarlo por XCom).
     """
+    # Setear la URI antes de tocar MLflow — compute_model_decay() también
+    # instancia MlflowClient internamente, así que la URI tiene que estar
+    # configurada antes de invocarlo (sino usa el default ./mlruns).
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:6000"))
+
     detector = DriftDetector(repo_path=repo_path)
 
     drift_result = detector.compute_ks_drift(fecha_corte, window_months=3)
     decay_result = detector.compute_model_decay(run_id, lookback_runs=5)
 
     report = {
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "fecha_corte": fecha_corte,
         "run_id": run_id,
         "data_drift": drift_result,
@@ -50,8 +55,9 @@ def generate_report(
     }
 
     if drift_result.get("is_drift"):
+        threshold = drift_result.get("threshold", 0.05)
         drifted = [
-            f for f, p in drift_result.get("p_values", {}).items() if p < 0.05
+            f for f, p in drift_result.get("p_values", {}).items() if p < threshold
         ]
         report["alerts"].append({
             "type": "data_drift",
@@ -76,7 +82,6 @@ def generate_report(
         json.dump(report, f, indent=2)
     logger.info("Reporte de monitoring escrito en %s", report_path)
 
-    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:6000"))
     with mlflow.start_run(run_id=run_id):
         mlflow.log_dict(report, "monitoring/report.json")
         mlflow.log_metric("drift_detected", int(bool(drift_result.get("is_drift"))))
