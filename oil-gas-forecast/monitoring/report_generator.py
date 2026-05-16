@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import mlflow
+import yaml
 
 from monitoring.drift_detector import DriftDetector
 
@@ -28,6 +29,7 @@ def generate_report(
     run_id: str,
     fecha_corte: str,
     repo_path: str = "./feature_store",
+    config_path: str = "config.yaml",
 ) -> dict:
     """
     Ejecuta las dos métricas, arma el reporte, lo persiste y lo loguea en MLflow.
@@ -40,10 +42,19 @@ def generate_report(
     # configurada antes de invocarlo (sino usa el default ./mlruns).
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:6000"))
 
-    detector = DriftDetector(repo_path=repo_path)
+    with open(config_path) as f:
+        full_config = yaml.safe_load(f)
+    monitoring_config = full_config["monitoring"]
+    feature_cols = full_config["model"]["features"]
 
-    drift_result = detector.compute_ks_drift(fecha_corte, window_months=3)
-    decay_result = detector.compute_model_decay(run_id, lookback_runs=5)
+    detector = DriftDetector(
+        repo_path=repo_path,
+        config=monitoring_config,
+        feature_cols=feature_cols,
+    )
+
+    drift_result = detector.compute_ks_drift(fecha_corte)
+    decay_result = detector.compute_model_decay(run_id)
 
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
