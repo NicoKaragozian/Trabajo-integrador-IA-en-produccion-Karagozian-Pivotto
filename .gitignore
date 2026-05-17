@@ -16,6 +16,15 @@ oil-gas-forecast/feature_store/online_store.db
 # MLflow (artefactos locales)
 mlruns/
 
+# Airflow runtime
+oil-gas-forecast/airflow/logs/*
+!oil-gas-forecast/airflow/logs/.gitkeep
+oil-gas-forecast/airflow/plugins/*
+!oil-gas-forecast/airflow/plugins/.gitkeep
+
+# Monitoring report (generado por el DAG)
+oil-gas-forecast/data/monitoring_report.json
+
 # Python
 __pycache__/
 *.py[cod]

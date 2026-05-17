@@ -1,3 +1,39 @@
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: airflow/Dockerfile
+  # tag explicito para que init/webserver/scheduler compartan la misma imagen
+  image: oil-gas-forecast-airflow:latest
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-mlflow}:${POSTGRES_PASSWORD:-mlflow}@postgres/${AIRFLOW_DB:-airflow}
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
+    MLFLOW_TRACKING_URI: http://mlflow:6000
+    MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-hydrocarbon-forecast}
+    MODEL_NAME: ${MODEL_NAME:-hydrocarbon-forecast-model}
+    FEAST_REPO_PATH: /opt/airflow/feature_store
+    CONFIG_PATH: /opt/airflow/config.yaml
+    MONITORING_REPORT_PATH: /opt/airflow/data/monitoring_report.json
+    PYTHONPATH: /opt/airflow:/opt/airflow/pipelines:/opt/airflow/monitoring
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./pipelines:/opt/airflow/pipelines
+    - ./feature_store:/opt/airflow/feature_store
+    - ./monitoring:/opt/airflow/monitoring
+    - ./data:/opt/airflow/data
+    - ./mlruns:/opt/airflow/mlruns
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./config.yaml:/opt/airflow/config.yaml
+  user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-0}"
+  depends_on: &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+
 services:
   postgres:
     image: postgres:13
@@ -7,8 +43,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-mlflow}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "mlflow"]
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-mlflow}"]
       interval: 5s
       retries: 5
 
@@ -30,6 +67,55 @@ services:
       postgres:
         condition: service_healthy
 
+  # one-shot: migra db y crea user admin (idempotente)
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate && \
+        airflow users list | awk '{print $$1}' | grep -qx "${_AIRFLOW_WWW_USER_USERNAME:-admin}" || \
+        airflow users create \
+          --username "${_AIRFLOW_WWW_USER_USERNAME:-admin}" \
+          --password "${_AIRFLOW_WWW_USER_PASSWORD:-admin}" \
+          --firstname Admin --lastname User --role Admin \
+          --email admin@example.com
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    restart: always
+    healthcheck:
+      # ENABLE_HEALTH_CHECK_SERVER es de airflow 2.9+; en 2.8 usamos jobs check
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$(hostname)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
   api:
     build: ./api
     ports:
@@ -38,9 +124,11 @@ services:
       - MLFLOW_TRACKING_URI=http://mlflow:6000
       - FEAST_REPO_PATH=/app/feature_store
       - MODEL_NAME=${MODEL_NAME:-hydrocarbon-forecast-model}
+      - MONITORING_REPORT_PATH=/app/data/monitoring_report.json
     volumes:
       - ./feature_store:/app/feature_store
       - ./pipelines:/app/pipelines
+      - ./monitoring:/app/monitoring
       - ./data:/app/data
       - ./config.yaml:/app/config.yaml
       - ./mlruns:/app/mlruns
