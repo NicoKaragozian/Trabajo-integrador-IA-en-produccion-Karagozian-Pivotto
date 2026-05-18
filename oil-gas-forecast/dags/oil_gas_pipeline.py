@@ -1,20 +1,20 @@
 """
-DAG mensual de produccion: feature -> training -> monitoring.
+DAG mensual de producción: feature -> training -> monitoring.
 
 La frecuencia es @monthly porque el dataset de datos.energia.gob.ar se reporta
 mes a mes. Cada run usa data_interval_end como fecha de corte para garantizar
 reproducibilidad: el run del intervalo abril -> mayo siempre corta en 2026-05-01,
-sin importar cuando se ejecute dentro del mes.
+sin importar cuándo se ejecute dentro del mes.
 
-PYTHONPATH=/opt/airflow:/opt/airflow/pipelines:/opt/airflow/monitoring esta
-seteado por el compose, asi que los imports dentro de cada @task funcionan sin
+PYTHONPATH=/opt/airflow:/opt/airflow/pipelines:/opt/airflow/monitoring está
+seteado por el compose, así que los imports dentro de cada @task funcionan sin
 sys.path manual.
 """
 import os
 from datetime import timedelta
 
+import pendulum
 from airflow.decorators import dag, task
-from airflow.utils.dates import days_ago
 
 
 DEFAULT_ARGS = {
@@ -27,9 +27,9 @@ DEFAULT_ARGS = {
 
 @dag(
     dag_id="oil_gas_pipeline",
-    description="Pipeline mensual de pronostico de produccion de hidrocarburos",
-    schedule_interval="@monthly",
-    start_date=days_ago(1),
+    description="Pipeline mensual de pronóstico de producción de hidrocarburos",
+    schedule="@monthly",
+    start_date=pendulum.datetime(2026, 1, 1, tz="UTC"),
     catchup=False,
     default_args=DEFAULT_ARGS,
     tags=["oil-gas", "mlops", "forecast"],
@@ -57,7 +57,7 @@ def oil_gas_pipeline():
 
         run_id, version = train(
             fecha_corte=fecha_corte,
-            config_path=os.environ["CONFIG_PATH"],
+            config_path=os.getenv("CONFIG_PATH", "config.yaml"),
         )
         return {"run_id": run_id, "version": version, "fecha_corte": fecha_corte}
 
@@ -68,8 +68,8 @@ def oil_gas_pipeline():
         return generate_report(
             run_id=training_result["run_id"],
             fecha_corte=training_result["fecha_corte"],
-            repo_path=os.environ["FEAST_REPO_PATH"],
-            config_path=os.environ["CONFIG_PATH"],
+            repo_path=os.getenv("FEAST_REPO_PATH", "./feature_store"),
+            config_path=os.getenv("CONFIG_PATH", "config.yaml"),
         )
 
     fecha = feature_task()
