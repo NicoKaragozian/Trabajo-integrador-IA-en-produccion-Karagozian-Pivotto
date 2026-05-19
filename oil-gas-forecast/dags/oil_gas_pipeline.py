@@ -77,4 +77,4 @@ def oil_gas_pipeline():
     monitoring_task(training_result)
 
 
-dag = oil_gas_pipeline()
+oil_gas_pipeline_dag = oil_gas_pipeline()
