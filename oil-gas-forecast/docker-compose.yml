@@ -125,6 +125,7 @@ services:
       - FEAST_REPO_PATH=/app/feature_store
       - MODEL_NAME=${MODEL_NAME:-hydrocarbon-forecast-model}
       - MONITORING_REPORT_PATH=/app/data/monitoring_report.json
+      - RAY_NUM_REPLICAS=${RAY_NUM_REPLICAS:-2}
     volumes:
       - ./feature_store:/app/feature_store
       - ./pipelines:/app/pipelines
